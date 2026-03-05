@@ -23,6 +23,26 @@ export class EmailService {
     }
   }
 
+  async sendOtpEmail(to: string, code: string): Promise<void> {
+    const from =
+      this.configService.get<string>('SMTP_FROM') || 'noreply@attendease.local';
+    const subject = 'Your login verification code – Attend Ease';
+    const html = `
+      <p>Your verification code for Attend Ease is:</p>
+      <h2 style="letter-spacing:8px;font-size:32px;font-weight:bold;color:#4F46E5;">${code}</h2>
+      <p>This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+      <p>If you did not attempt to sign in, please change your password immediately.</p>
+    `;
+
+    // Always log OTP to console for easy debugging (check your backend terminal)
+    console.log(`[2FA OTP] Code for ${to}: ${code}`);
+
+    if (this.transporter) {
+      await this.transporter.sendMail({ from, to, subject, html });
+    }
+  }
+
+
   async sendPasswordReset(to: string, resetLink: string): Promise<void> {
     const from =
       this.configService.get<string>('SMTP_FROM') || 'noreply@attendease.local';

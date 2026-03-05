@@ -7,6 +7,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (credentials: { email: string; password: string }) => Promise<LoginResponse>;
   complete2fa: (token: string, code: string) => Promise<void>;
+  completeEmailOtp: (token: string, code: string) => Promise<void>;
   refreshUser: () => Promise<void>;
   logout: () => void;
 }
@@ -71,6 +72,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(response.user);
   };
 
+  const completeEmailOtp = async (token: string, code: string) => {
+    const response = await authApi.verifyEmailOtp({ token, code });
+    localStorage.setItem('token', response.access_token);
+    localStorage.setItem('user', JSON.stringify(response.user));
+    setUser(response.user);
+  };
+
   const refreshUser = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -96,6 +104,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     login,
     complete2fa,
+    completeEmailOtp,
     refreshUser,
     logout,
   };

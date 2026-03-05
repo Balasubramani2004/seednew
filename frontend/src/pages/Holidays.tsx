@@ -26,8 +26,11 @@ import {
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { holidaysApi } from '../api/holidays';
 import { Holiday } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 const Holidays: React.FC = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'LAB_ADMIN';
   const [open, setOpen] = useState(false);
   const [editHoliday, setEditHoliday] = useState<Holiday | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
@@ -147,9 +150,11 @@ const Holidays: React.FC = () => {
             Manage company holidays
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-          Add Holiday
-        </Button>
+        {isAdmin && (
+          <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
+            Add Holiday
+          </Button>
+        )}
       </Box>
 
       {Object.keys(holidaysByYear).length === 0 ? (
@@ -183,9 +188,11 @@ const Holidays: React.FC = () => {
                         <TableCell>
                           <strong>Description</strong>
                         </TableCell>
-                        <TableCell align="center">
-                          <strong>Actions</strong>
-                        </TableCell>
+                        {isAdmin && (
+                          <TableCell align="center">
+                            <strong>Actions</strong>
+                          </TableCell>
+                        )}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -202,20 +209,24 @@ const Holidays: React.FC = () => {
                             </TableCell>
                             <TableCell>{holiday.description || '-'}</TableCell>
                             <TableCell align="center">
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleOpen(holiday)}
-                              >
-                                <Edit fontSize="small" />
-                              </IconButton>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleDelete(holiday.id)}
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
+                              {isAdmin && (
+                                <>
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => handleOpen(holiday)}
+                                  >
+                                    <Edit fontSize="small" />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleDelete(holiday.id)}
+                                  >
+                                    <Delete fontSize="small" />
+                                  </IconButton>
+                                </>
+                              )}
                             </TableCell>
                           </TableRow>
                         );
@@ -272,8 +283,8 @@ const Holidays: React.FC = () => {
             {createMutation.isPending || updateMutation.isPending
               ? 'Saving...'
               : editHoliday
-              ? 'Update'
-              : 'Add Holiday'}
+                ? 'Update'
+                : 'Add Holiday'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -47,6 +47,17 @@ export const authApi = {
     return data;
   },
 
+  verifyEmailOtp: async (params: {
+    token: string;
+    code: string;
+  }): Promise<{ access_token: string; user: AuthUser }> => {
+    const { data } = await api.post<{ access_token: string; user: AuthUser }>(
+      '/auth/2fa/verify-email',
+      params,
+    );
+    return data;
+  },
+
   setup2fa: async (): Promise<{ otpauthUrl: string; secret: string }> => {
     const { data } = await api.post<{ otpauthUrl: string; secret: string }>(
       '/auth/2fa/setup',

@@ -20,7 +20,7 @@ import { Request } from 'express';
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   @Public()
   @Post('login')
@@ -107,11 +107,20 @@ export class AuthController {
 
   @Public()
   @Post('2fa/verify')
-  @ApiOperation({ summary: 'Verify 2FA code and complete login' })
+  @ApiOperation({ summary: 'Verify TOTP 2FA code and complete login' })
   @ApiResponse({ status: 200, description: 'Returns access token and user', type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid or expired token or code' })
   async verify2fa(@Body() dto: Verify2faDto) {
     return this.authService.verify2fa(dto);
+  }
+
+  @Public()
+  @Post('2fa/verify-email')
+  @ApiOperation({ summary: 'Verify email OTP code and complete admin login' })
+  @ApiResponse({ status: 200, description: 'Returns access token and user', type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Invalid or expired OTP or session' })
+  async verifyEmailOtp(@Body() dto: Verify2faDto) {
+    return this.authService.verifyEmailOtp(dto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

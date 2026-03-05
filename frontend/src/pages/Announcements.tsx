@@ -20,15 +20,18 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  IconButton,
 } from '@mui/material';
-import { Add, Campaign } from '@mui/icons-material';
+import { Add, Campaign, Edit, Delete } from '@mui/icons-material';
 import { announcementsApi } from '../api/announcements';
 import { useAuth } from '../contexts/AuthContext';
+import { Announcement } from '../types';
 
 const Announcements: React.FC = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN' || user?.role === 'LAB_ADMIN';
   const [open, setOpen] = useState(false);
+  const [editAnnouncement, setEditAnnouncement] = useState<Announcement | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const queryClient = useQueryClient();
 
@@ -48,8 +51,7 @@ const Announcements: React.FC = () => {
     mutationFn: announcementsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['announcements'] });
-      setOpen(false);
-      setFormData({ title: '', content: '', priority: 'MEDIUM', targetAudience: 'ALL' });
+      handleClose();
       setSnackbar({ open: true, message: 'Announcement created!', severity: 'success' });
     },
     onError: (error: any) => {
@@ -57,8 +59,60 @@ const Announcements: React.FC = () => {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => announcementsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
+      handleClose();
+      setSnackbar({ open: true, message: 'Announcement updated!', severity: 'success' });
+    },
+    onError: (error: any) => {
+      setSnackbar({ open: true, message: error.response?.data?.message || 'Failed to update announcement', severity: 'error' });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: announcementsApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['announcements'] });
+      setSnackbar({ open: true, message: 'Announcement deleted!', severity: 'success' });
+    },
+    onError: (error: any) => {
+      setSnackbar({ open: true, message: error.response?.data?.message || 'Failed to delete announcement', severity: 'error' });
+    },
+  });
+
+  const handleOpen = (announcement?: Announcement) => {
+    if (announcement) {
+      setEditAnnouncement(announcement);
+      setFormData({
+        title: announcement.title,
+        content: announcement.content,
+        priority: announcement.priority,
+        targetAudience: announcement.targetAudience,
+      });
+    }
+    setOpen(true);
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setEditAnnouncement(null);
+    setFormData({ title: '', content: '', priority: 'MEDIUM', targetAudience: 'ALL' });
+  };
+
   const handleSubmit = () => {
-    createMutation.mutate(formData);
+    if (editAnnouncement) {
+      updateMutation.mutate({ id: editAnnouncement.id, data: formData });
+    } else {
+      createMutation.mutate(formData);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this announcement?')) {
+      deleteMutation.mutate(id);
+    }
   };
 
   const getPriorityColor = (priority: string): any => {
@@ -90,7 +144,7 @@ const Announcements: React.FC = () => {
           </Typography>
         </Box>
         {isAdmin && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => setOpen(true)}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
             New Announcement
           </Button>
         )}
@@ -107,7 +161,7 @@ const Announcements: React.FC = () => {
                     {announcement.title}
                   </Typography>
                 </Box>
-                <Box display="flex" gap={1}>
+                <Box display="flex" gap={1} alignItems="center">
                   <Chip
                     label={announcement.priority}
                     color={getPriorityColor(announcement.priority)}
@@ -115,6 +169,27 @@ const Announcements: React.FC = () => {
                   />
                   {announcement.isPinned && (
                     <Chip label="Pinned" color="info" size="small" variant="outlined" />
+                  )}
+                  {isAdmin && (
+                    <>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleOpen(announcement)}
+                        title="Edit announcement"
+                      >
+                        <Edit fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDelete(announcement.id)}
+                        title="Delete announcement"
+                        disabled={deleteMutation.isPending}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </>
                   )}
                 </Box>
               </Box>
@@ -143,9 +218,9 @@ const Announcements: React.FC = () => {
         </Card>
       )}
 
-      {/* Create Announcement Dialog */}
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Announcement</DialogTitle>
+      {/* Create / Edit Announcement Dialog */}
+      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+        <DialogTitle>{editAnnouncement ? 'Edit Announcement' : 'Create Announcement'}</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 1 }}>
             <TextField
@@ -193,13 +268,17 @@ const Announcements: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleClose}>Cancel</Button>
           <Button
             onClick={handleSubmit}
             variant="contained"
-            disabled={createMutation.isPending || !formData.title || !formData.content}
+            disabled={createMutation.isPending || updateMutation.isPending || !formData.title || !formData.content}
           >
-            {createMutation.isPending ? 'Creating...' : 'Create'}
+            {createMutation.isPending || updateMutation.isPending
+              ? 'Saving...'
+              : editAnnouncement
+                ? 'Update'
+                : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

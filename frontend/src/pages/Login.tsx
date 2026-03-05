@@ -33,7 +33,8 @@ const Login: React.FC = () => {
   const [step, setStep] = useState<'credentials' | '2fa'>('credentials');
   const [twoFactorToken, setTwoFactorToken] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
-  const { login, complete2fa } = useAuth();
+  const [isEmailOtp, setIsEmailOtp] = useState(false);
+  const { login, complete2fa, completeEmailOtp } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
@@ -49,6 +50,14 @@ const Login: React.FC = () => {
       const response = await login({ email, password });
       if ('requires2fa' in response && response.requires2fa) {
         setTwoFactorToken(response.twoFactorToken);
+        // Decode the token to detect email OTP vs TOTP
+        try {
+          const parts = response.twoFactorToken.split('.');
+          const decoded = JSON.parse(atob(parts[1]));
+          setIsEmailOtp(decoded.purpose === '2fa-email');
+        } catch {
+          setIsEmailOtp(false);
+        }
         setStep('2fa');
       } else {
         navigate('/');
@@ -56,7 +65,7 @@ const Login: React.FC = () => {
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
-          'Login failed. Please check your credentials.'
+        'Login failed. Please check your credentials.'
       );
     } finally {
       setLoading(false);
@@ -68,7 +77,11 @@ const Login: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      await complete2fa(twoFactorToken, twoFactorCode);
+      if (isEmailOtp) {
+        await completeEmailOtp(twoFactorToken, twoFactorCode);
+      } else {
+        await complete2fa(twoFactorToken, twoFactorCode);
+      }
       navigate('/');
     } catch (err: any) {
       setError(
@@ -83,6 +96,7 @@ const Login: React.FC = () => {
     setStep('credentials');
     setTwoFactorToken('');
     setTwoFactorCode('');
+    setIsEmailOtp(false);
     setError('');
   };
 
@@ -169,9 +183,16 @@ const Login: React.FC = () => {
 
             {step === '2fa' ? (
               <form onSubmit={handle2faSubmit}>
-                <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                  Enter the 6-digit code from your authenticator app.
-                </Typography>
+                <Box sx={{ textAlign: 'center', mb: 3 }}>
+                  <Typography variant="h6" fontWeight={700} gutterBottom>
+                    {isEmailOtp ? '📧 Check Your Email' : '🔐 Two-Factor Authentication'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {isEmailOtp
+                      ? `A 6-digit verification code was sent to your email address. Enter it below to sign in.`
+                      : 'Enter the 6-digit code from your authenticator app.'}
+                  </Typography>
+                </Box>
                 <TextField
                   label="Verification code"
                   placeholder="000000"

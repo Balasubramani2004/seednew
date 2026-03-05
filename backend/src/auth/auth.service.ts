@@ -26,6 +26,8 @@ const RESET_TOKEN_EXPIRY_MS = 60 * 60 * 1000; // 1 hour
 const LOGIN_RATE_LIMIT = 10;
 const LOGIN_WINDOW_MS = 5 * 60 * 1000; // 5 minutes per IP/email combo
 
+const EMAIL_OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -36,7 +38,14 @@ export class AuthService {
     private twoFactorService: TwoFactorService,
     private passwordService: AuthPasswordService,
     private rateLimiter: RateLimiterService,
-  ) {}
+  ) { }
+
+  // In-memory store for email OTP codes (keyed by userId)
+  private emailOtpStore = new Map<string, { code: string; createdAt: number }>();
+
+  private generateEmailOtp(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 
   async login(
     loginDto: LoginDto,
@@ -86,7 +95,21 @@ export class AuthService {
     }
 
     const isAdmin = this.twoFactorService.isAdminRole(user.role);
+
+    // Admins with 2FA enabled get email OTP on every login
     if (isAdmin && user.twoFactorEnabled) {
+      const code = this.generateEmailOtp();
+      this.emailOtpStore.set(user.id, { code, createdAt: Date.now() });
+      await this.emailService.sendOtpEmail(user.email, code);
+      const twoFactorToken = this.jwtService.sign(
+        { sub: user.id, purpose: '2fa-email' },
+        { expiresIn: '10m' },
+      );
+      return { requires2fa: true, twoFactorToken };
+    }
+
+    // Legacy TOTP path for non-admin accounts with TOTP 2FA enabled
+    if (!isAdmin && user.twoFactorEnabled) {
       const twoFactorToken = this.jwtService.sign(
         { sub: user.id, purpose: '2fa' },
         { expiresIn: '5m' },
@@ -157,6 +180,63 @@ export class AuthService {
       where: { id: userId },
       data: { twoFactorEnabled: true, twoFactorSecret: secret },
     });
+  }
+
+  async verifyEmailOtp(dto: Verify2faDto): Promise<AuthResponseDto> {
+    let payload: { sub?: string; purpose?: string };
+    try {
+      payload = this.jwtService.verify(dto.token, { ignoreExpiration: false }) as any;
+    } catch {
+      throw new UnauthorizedException('Invalid or expired 2FA session. Please sign in again.');
+    }
+    if (payload.purpose !== '2fa-email' || !payload.sub) {
+      throw new UnauthorizedException('Invalid token');
+    }
+    const entry = this.emailOtpStore.get(payload.sub);
+    if (!entry) {
+      throw new UnauthorizedException('OTP expired or not found. Please sign in again.');
+    }
+    if (Date.now() - entry.createdAt > EMAIL_OTP_TTL_MS) {
+      this.emailOtpStore.delete(payload.sub);
+      throw new UnauthorizedException('OTP has expired. Please sign in again.');
+    }
+    if (entry.code !== dto.code) {
+      throw new UnauthorizedException('Invalid verification code.');
+    }
+    this.emailOtpStore.delete(payload.sub);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        employeeId: true,
+        name: true,
+        email: true,
+        role: true,
+        designation: true,
+        twoFactorEnabled: true,
+      },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const jwtPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+    const accessToken = this.jwtService.sign(jwtPayload);
+    return {
+      access_token: accessToken,
+      user: {
+        id: user.id,
+        employeeId: user.employeeId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        designation: user.designation,
+        twoFactorEnabled: user.twoFactorEnabled,
+      },
+    };
   }
 
   async verify2fa(dto: Verify2faDto): Promise<AuthResponseDto> {

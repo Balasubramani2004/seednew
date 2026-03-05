@@ -23,7 +23,6 @@ import {
   Menu as MenuIcon,
   Dashboard,
   CalendarMonth,
-  ListAlt,
   BeachAccess,
   Receipt,
   Campaign,
@@ -55,7 +54,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: 'Dashboard', path: '/', icon: <Dashboard /> },
   { title: 'Attendance', path: '/attendance', icon: <CalendarMonth /> },
-  { title: 'Activity Report', path: '/activity', icon: <ListAlt /> },
   { title: 'Leave', path: '/leave', icon: <BeachAccess /> },
   { title: 'Salary Slips', path: '/salary-slips', icon: <Receipt /> },
   { title: 'Announcements', path: '/announcements', icon: <Campaign /> },
@@ -75,7 +73,7 @@ const navItems: NavItem[] = [
     title: 'Users',
     path: '/users',
     icon: <People />,
-    roles: [Role.LAB_ADMIN, Role.SUPER_ADMIN],
+    roles: [Role.SUPER_ADMIN],
   },
   {
     title: 'Holidays',
