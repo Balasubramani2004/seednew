@@ -7,6 +7,8 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -22,7 +24,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post()
   @Roles(Role.SUPER_ADMIN)
@@ -59,7 +61,17 @@ export class UsersController {
   @ApiOperation({ summary: 'Get user by ID' })
   @ApiResponse({ status: 200, description: 'User retrieved successfully' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  findOne(@Param('id') id: string) {
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    const requester = req.user;
+
+    // If not admin, can only see self
+    if (requester.role !== Role.SUPER_ADMIN && requester.role !== Role.LAB_ADMIN) {
+      if (requester.userId !== id) {
+        throw new ForbiddenException('You can only view your own profile');
+      }
+    }
+
     return this.usersService.findOne(id);
   }
 

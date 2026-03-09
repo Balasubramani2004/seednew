@@ -27,6 +27,7 @@ describe('AuthService', () => {
   let prisma: { user: { findUnique: jest.Mock } };
   let passwordService: { compare: jest.Mock };
   let twoFactorService: { isAdminRole: jest.Mock };
+  let jwtService: any;
 
   const mockUser = {
     id: 'user-1',
@@ -62,6 +63,7 @@ describe('AuthService', () => {
     prisma = module.get(PrismaService);
     passwordService = module.get(AuthPasswordService);
     twoFactorService = mockTwoFactorInstance;
+    jwtService = module.get(JwtService);
   });
 
   it('login returns token when credentials valid', async () => {
@@ -87,11 +89,16 @@ describe('AuthService', () => {
     await expect(service.login({ email: 'test@example.com', password: 'password' })).rejects.toThrow(UnauthorizedException);
   });
 
-  it('login returns requires2fa for admin with 2FA enabled', async () => {
+  it('login returns requires2fa with purpose 2fa for admin with 2FA enabled', async () => {
     prisma.user.findUnique.mockResolvedValue({ ...mockUser, role: Role.SUPER_ADMIN, twoFactorEnabled: true });
     twoFactorService.isAdminRole.mockReturnValue(true);
     const result = await service.login({ email: 'test@example.com', password: 'password' });
     expect(result).toHaveProperty('requires2fa', true);
     expect(result).toHaveProperty('twoFactorToken');
+
+    // Verify token purpose is "2fa" (TOTP)
+    jwtService.verify.mockReturnValue({ purpose: '2fa' });
+    const decoded = jwtService.verify((result as any).twoFactorToken);
+    expect(decoded.purpose).toBe('2fa');
   });
 });

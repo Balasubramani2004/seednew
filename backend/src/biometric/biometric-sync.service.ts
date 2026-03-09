@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AttendanceStatus, LeaveStatus } from '@prisma/client';
-import { isWeekend } from '../common/date.utils';
+import { isWeekend, toDateOnlyKey } from '../common/date.utils';
 import { getStatusFromWorkDurationMinutes } from '../common/attendance.utils';
 
 interface BiometricEntry {
@@ -38,7 +38,8 @@ export class BiometricSyncService {
     const allDates: Date[] = [];
 
     for (const entry of entries) {
-      const key = `${entry.employeeId}_${entry.date.toDateString()}`;
+      const dateKey = toDateOnlyKey(entry.date);
+      const key = `${entry.employeeId}_${dateKey}`;
       if (!grouped.has(key)) {
         grouped.set(key, []);
         allDates.push(entry.date);
@@ -61,7 +62,7 @@ export class BiometricSyncService {
       where: { date: { gte: minDate, lte: maxDate } },
     });
     const holidayDateKeys = new Set(
-      holidays.map((h) => h.date.toISOString().slice(0, 10)),
+      holidays.map((h) => toDateOnlyKey(h.date)),
     );
 
     // Batch fetch approved leaves overlapping date range for our users
@@ -79,7 +80,7 @@ export class BiometricSyncService {
       const from = new Date(leave.fromDate);
       const to = new Date(leave.toDate);
       for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-        leaveKeySet.add(`${leave.userId}_${d.toISOString().slice(0, 10)}`);
+        leaveKeySet.add(`${leave.userId}_${toDateOnlyKey(d)}`);
       }
     }
 
@@ -88,7 +89,7 @@ export class BiometricSyncService {
       try {
         const [employeeId] = key.split('_');
         const date = dateEntries[0].date;
-        const dateKey = date.toISOString().slice(0, 10);
+        const dateKey = toDateOnlyKey(date);
 
         const user = userByEmployeeId.get(employeeId);
         if (!user) {

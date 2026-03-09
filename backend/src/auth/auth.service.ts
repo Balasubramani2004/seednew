@@ -94,22 +94,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isAdmin = this.twoFactorService.isAdminRole(user.role);
 
-    // Admins with 2FA enabled get email OTP on every login
-    if (isAdmin && user.twoFactorEnabled) {
-      const code = this.generateEmailOtp();
-      this.emailOtpStore.set(user.id, { code, createdAt: Date.now() });
-      await this.emailService.sendOtpEmail(user.email, code);
-      const twoFactorToken = this.jwtService.sign(
-        { sub: user.id, purpose: '2fa-email' },
-        { expiresIn: '10m' },
-      );
-      return { requires2fa: true, twoFactorToken };
-    }
-
-    // Legacy TOTP path for non-admin accounts with TOTP 2FA enabled
-    if (!isAdmin && user.twoFactorEnabled) {
+    // If 2FA is enabled, trigger TOTP flow (authenticator app)
+    if (user.twoFactorEnabled) {
       const twoFactorToken = this.jwtService.sign(
         { sub: user.id, purpose: '2fa' },
         { expiresIn: '5m' },

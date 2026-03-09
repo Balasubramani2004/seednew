@@ -19,41 +19,53 @@ interface SalaryCalculation {
 
 @Injectable()
 export class PayrollCalculatorService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   /**
-   * Working days = calendar days in month minus weekends (Sat/Sun) minus company holidays.
+   * Working days for a specific user = active tenure days in month (joined to end or start to left)
+   * minus weekends (Sat/Sun) minus company holidays.
    * Company operates in India only. Month is 1-12 (January = 1).
-   * Holiday comparison uses date-only keys so the count is correct regardless of server timezone.
    */
-  private async calculateWorkingDays(year: number, month: number): Promise<number> {
-    // Last day of month: new Date(year, month, 0) since day 0 = last day of previous month (month is 1-12 here, so month=12 => Jan next year, day 0 = Dec 31)
-    const daysInMonth = new Date(year, month, 0).getDate();
+  private async calculateWorkingDays(user: any, year: number, month: number): Promise<number> {
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
 
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
+    const joinDate = new Date(user.dateOfJoining);
+    const leaveDate = user.dateOfLeaving ? new Date(user.dateOfLeaving) : null;
 
+    // Period the user was actually employed during this month
+    const activeStart = joinDate > monthStart ? joinDate : monthStart;
+    const activeEnd = (leaveDate && leaveDate < monthEnd) ? leaveDate : monthEnd;
+
+    if (activeStart > monthEnd || (leaveDate && leaveDate < monthStart)) {
+      return 0; // User was not employed during this month
+    }
     const holidays = await this.prisma.holiday.findMany({
       where: {
         date: {
-          gte: startDate,
-          lte: endDate,
+          gte: monthStart,
+          lte: monthEnd,
         },
       },
     });
 
     const holidayDates = new Set(holidays.map((h) => toDateOnlyKey(h.date)));
 
-    let workingDays = 0;
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day);
-      const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      if (!isWeekend(date) && !holidayDates.has(dateKey)) {
-        workingDays++;
+    let workingDaysCount = 0;
+    const current = new Date(activeStart);
+    current.setHours(0, 0, 0, 0);
+    const iterEnd = new Date(activeEnd);
+    iterEnd.setHours(23, 59, 59, 999);
+
+    while (current <= iterEnd) {
+      const dateKey = toDateOnlyKey(current);
+      if (!isWeekend(current) && !holidayDates.has(dateKey)) {
+        workingDaysCount++;
       }
+      current.setDate(current.getDate() + 1);
     }
 
-    return workingDays;
+    return workingDaysCount;
   }
 
   async calculateSalary(
@@ -72,8 +84,8 @@ export class PayrollCalculatorService {
 
     const baseSalary = Number(user.baseSalary);
 
-    // Calculate working days for the month
-    const workingDays = await this.calculateWorkingDays(year, month);
+    // Calculate working days for the specific user in this month
+    const workingDays = await this.calculateWorkingDays(user, year, month);
 
     // Get attendance records for the month
     const startDate = new Date(year, month - 1, 1);
@@ -95,7 +107,18 @@ export class PayrollCalculatorService {
     let halfDays = 0;
     let lossOfPayDays = 0;
 
+    // Filter attendance to only include records within the user's tenure
+    const joinDate = new Date(user.dateOfJoining);
+    const leaveDate = user.dateOfLeaving ? new Date(user.dateOfLeaving) : null;
+
     attendanceRecords.forEach((record) => {
+      const recordDate = new Date(record.date);
+
+      // Basic tenure check (though attendance should theoretically only exist while active)
+      if (recordDate < joinDate || (leaveDate && recordDate > leaveDate)) {
+        return;
+      }
+
       switch (record.status) {
         case AttendanceStatus.PRESENT:
           presentDays++;
@@ -109,7 +132,6 @@ export class PayrollCalculatorService {
         case AttendanceStatus.ABSENT:
           lossOfPayDays++;
           break;
-        // WEEKEND and HOLIDAY don't count towards working days
       }
     });
 
